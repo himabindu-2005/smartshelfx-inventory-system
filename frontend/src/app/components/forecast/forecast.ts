@@ -1,0 +1,157 @@
+import { Component, OnInit, AfterViewInit, ChangeDetectorRef, ElementRef, ViewChild } from '@angular/core';
+import { CommonModule } from '@angular/common';
+import { Router } from '@angular/router';
+import { MatIconModule } from '@angular/material/icon';
+import { ForecastService } from '../../services/forecast';
+
+@Component({
+  selector: 'app-forecast',
+  standalone: true,
+  imports: [CommonModule, MatIconModule],
+  template: `
+    <div class="app-layout">
+      <aside class="sidebar">
+        <div class="sidebar-logo"><h1>SmartShelfX</h1><span>Inventory System</span></div>
+        <nav class="sidebar-nav">
+          <a class="nav-item" (click)="navigate('/dashboard')"><mat-icon>dashboard</mat-icon> Dashboard</a>
+          <a class="nav-item" (click)="navigate('/products')"><mat-icon>inventory_2</mat-icon> Products</a>
+          <a class="nav-item" (click)="navigate('/stock')"><mat-icon>swap_horiz</mat-icon> Stock Transactions</a>
+          <a class="nav-item active" (click)="navigate('/forecast')"><mat-icon>trending_up</mat-icon> Demand Forecast</a>
+        </nav>
+        <div class="sidebar-footer"><a class="nav-item" (click)="navigate('/login')"><mat-icon>logout</mat-icon> Logout</a></div>
+      </aside>
+
+      <main class="main-content">
+        <div class="page-header">
+          <h2>Demand Forecast</h2>
+          <p>AI-powered inventory risk analysis and reorder recommendations</p>
+        </div>
+        <div class="page-body">
+
+          <!-- PIE CHART -->
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-bottom:28px" *ngIf="forecasts.length > 0">
+            <div class="stat-card" style="display:flex;flex-direction:column;align-items:center">
+              <div class="label" style="margin-bottom:16px;align-self:flex-start">Risk Distribution</div>
+              <canvas #pieChart width="220" height="220"></canvas>
+              <div style="display:flex;gap:20px;margin-top:16px;font-size:13px">
+                <span style="display:flex;align-items:center;gap:6px"><span style="width:12px;height:12px;border-radius:50%;background:#ef4444;display:inline-block"></span>High ({{ highCount }})</span>
+                <span style="display:flex;align-items:center;gap:6px"><span style="width:12px;height:12px;border-radius:50%;background:#f97316;display:inline-block"></span>Medium ({{ medCount }})</span>
+                <span style="display:flex;align-items:center;gap:6px"><span style="width:12px;height:12px;border-radius:50%;background:#22c55e;display:inline-block"></span>Low ({{ lowCount }})</span>
+              </div>
+            </div>
+            <div style="display:grid;grid-template-rows:repeat(3,1fr);gap:16px">
+              <div class="stat-card">
+                <div class="label">High Risk</div>
+                <div class="value" style="color:#ef4444;font-size:32px">{{ highCount }}</div>
+              </div>
+              <div class="stat-card">
+                <div class="label">Medium Risk</div>
+                <div class="value" style="color:#f97316;font-size:32px">{{ medCount }}</div>
+              </div>
+              <div class="stat-card">
+                <div class="label">Low Risk</div>
+                <div class="value" style="color:#22c55e;font-size:32px">{{ lowCount }}</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- FORECAST CARDS -->
+          <div class="section-header"><h3>Product Forecasts</h3></div>
+          <div class="forecast-grid" *ngIf="forecasts.length > 0">
+            <div class="forecast-card" *ngFor="let f of forecasts"
+              [style.border-left]="'3px solid ' + getRiskColor(f.riskLevel)">
+              <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px">
+                <div>
+                  <h4>{{ f.productName }}</h4>
+                  <div class="cat">{{ f.category }}</div>
+                </div>
+                <span [class]="getRiskClass(f.riskLevel)">{{ f.riskLevel }}</span>
+              </div>
+              <div class="row"><span>Current Stock</span><span>{{ f.currentStock }}</span></div>
+              <div class="row"><span>Predicted Demand</span><span>{{ f.predictedDemand | number:'1.0-0' }}</span></div>
+              <div class="row"><span>Days Until Stockout</span><span [style.color]="f.daysUntilStockout < 7 ? '#ef4444' : '#e2e8f0'">{{ f.daysUntilStockout | number:'1.0-0' }} days</span></div>
+              <div class="row"><span>Recommended Reorder</span><span style="color:#4f8ef7;font-weight:700">{{ f.recommendedReorderQuantity | number:'1.0-0' }} units</span></div>
+            </div>
+          </div>
+
+          <div *ngIf="forecasts.length === 0" style="text-align:center;padding:64px;color:#94a3b8">
+            <mat-icon style="font-size:48px;width:48px;height:48px;margin-bottom:16px;display:block;margin-left:auto;margin-right:auto">trending_up</mat-icon>
+            <p>No forecast data available. Add products and stock transactions first!</p>
+          </div>
+
+        </div>
+      </main>
+    </div>
+  `
+})
+export class Forecast implements OnInit, AfterViewInit {
+  @ViewChild('pieChart') pieChartRef!: ElementRef<HTMLCanvasElement>;
+  forecasts: any[] = [];
+  highCount = 0; medCount = 0; lowCount = 0;
+  chartDrawn = false;
+
+  constructor(private forecastService: ForecastService, private router: Router, private cdr: ChangeDetectorRef) {}
+
+  ngOnInit() {
+    this.forecastService.forecastAllProducts().subscribe({
+      next: (data) => {
+        this.forecasts = data;
+        this.highCount = data.filter(f => f.riskLevel === 'HIGH').length;
+        this.medCount = data.filter(f => f.riskLevel === 'MEDIUM').length;
+        this.lowCount = data.filter(f => f.riskLevel === 'LOW').length;
+        this.cdr.detectChanges();
+        setTimeout(() => this.drawPieChart(), 100);
+      },
+      error: () => { this.forecasts = []; this.cdr.detectChanges(); }
+    });
+  }
+
+  ngAfterViewInit() {
+    if (this.forecasts.length > 0) setTimeout(() => this.drawPieChart(), 100);
+  }
+
+  drawPieChart() {
+    if (!this.pieChartRef || this.chartDrawn) return;
+    const canvas = this.pieChartRef.nativeElement;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    const total = this.highCount + this.medCount + this.lowCount;
+    if (total === 0) return;
+    this.chartDrawn = true;
+    const data = [
+      { value: this.highCount, color: '#ef4444' },
+      { value: this.medCount, color: '#f97316' },
+      { value: this.lowCount, color: '#22c55e' }
+    ];
+    const cx = 110, cy = 110, r = 90;
+    let start = -Math.PI / 2;
+    ctx.clearRect(0, 0, 220, 220);
+    data.forEach(d => {
+      if (d.value === 0) return;
+      const slice = (d.value / total) * 2 * Math.PI;
+      ctx.beginPath();
+      ctx.moveTo(cx, cy);
+      ctx.arc(cx, cy, r, start, start + slice);
+      ctx.closePath();
+      ctx.fillStyle = d.color;
+      ctx.fill();
+      ctx.strokeStyle = '#0a1628';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      start += slice;
+    });
+    ctx.beginPath();
+    ctx.arc(cx, cy, 45, 0, 2 * Math.PI);
+    ctx.fillStyle = '#112240';
+    ctx.fill();
+    ctx.fillStyle = '#e2e8f0';
+    ctx.font = 'bold 18px Space Mono, monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(String(total), cx, cy);
+  }
+
+  getRiskColor(risk: string) { return risk === 'HIGH' ? '#ef4444' : risk === 'MEDIUM' ? '#f97316' : '#22c55e'; }
+  getRiskClass(risk: string) { return risk === 'HIGH' ? 'badge badge-high' : risk === 'MEDIUM' ? 'badge badge-medium' : 'badge badge-green'; }
+  navigate(path: string) { this.router.navigate([path]); }
+}
