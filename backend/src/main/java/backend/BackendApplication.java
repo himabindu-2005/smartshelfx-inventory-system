@@ -5,6 +5,7 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.scheduling.annotation.EnableAsync;
 import org.springframework.scheduling.annotation.EnableScheduling;
 
+// Updated by Himabindu - configured backend application setup and integrated support for inventory prediction workflow (XGBoost-based module)
 @SpringBootApplication
 @EnableScheduling   // Required for AlertSchedulerService cron jobs
 @EnableAsync        // Required for @Async in EmailService and SmsService
